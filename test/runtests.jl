@@ -232,15 +232,18 @@ points, density, pressure, acceleration, velocity = RunSimulation(NumberOfIterat
 
 end
 
-
+#=
 using Profile
 using PProf
 
 @profile  for i = 1:3  RunSimulation() end
 
 pprof()
-PProf.kill()
-Profile.clear()
+#PProf.kill()
+#Profile.clear()
+=#
 
+#=
 using BenchmarkTools
 @btime RunSimulation(NumberOfIterations=200);
+=#
