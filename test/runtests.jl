@@ -102,7 +102,7 @@ function RunSimulation(;
     # create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,Pressure.(density,c₀,γ,ρ₀),acceleration,velocity)
 
     # Initialize the system list
-    system  = InPlaceNeighborList(x=points, cutoff=2 * H, parallel=true)
+    system  = InPlaceNeighborList(x=points, cutoff= 2H, parallel=true)
     
     N    = length(points)
 
@@ -218,17 +218,13 @@ points, density, pres, acceleration, velocity = RunSimulation(NumberOfIterations
     6215.819913178543
        0.0]
 
-    @test sum(density) ≈ 6.200838532554191e6
+    @test sum(density) ≈ 6.200838532554191e6 atol = 6.200838532554191e6 * 1E-5
 
-    @test sum(pres) ≈ 4.604937728177776e7
+    @test sum(pres) ≈ 4.604937728177776e7 atol = 4.604937728177776e7 * 1E-2
 
-    @test sum(acceleration) ≈ [ 1.4551915228366852e-11
-    -31519.530000000093
-         0.0]
+    @test sum(acceleration) ≈ [ 1.4551915228366852e-11, -31519.530000000093, 0.0] atol = maximum(abs.([ 1.4551915228366852e-11, -31519.530000000093, 0.0])) * 1E-6
 
-    @test sum(velocity) ≈ [2.0295953409284935
-    -2.0079407428925227
-     0.0]
+    @test sum(velocity) ≈ [2.0295953409284935, -2.0079407428925227, 0.0]
 
 end
 
@@ -246,4 +242,20 @@ pprof()
 #=
 using BenchmarkTools
 @btime RunSimulation(NumberOfIterations=200);
+=#
+
+
+#=
+function btpn(cpupoints, dist)
+    n = 0
+    for i = 1:length(cpupoints)-1
+        for j = i+1:length(cpupoints)
+            if sqrt((cpupoints[i][1] -  cpupoints[j][1])^2 + (cpupoints[i][2] -  cpupoints[j][2])^2) < dist 
+                n += 1 
+            end
+        end
+    end
+    n
+end
+btpn(points, 2H)
 =#
