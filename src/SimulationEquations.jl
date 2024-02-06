@@ -32,7 +32,7 @@ Wᵢⱼ = αD * (1 - q)^4 * (1 + 4q)
 ```
 """
 function Wᵢⱼ(αD, q)
-    return αD * (1 - q) ^ 4 * (4 * q + 1)
+    return αD * (1 - q) ^ 4 * (1 + 4q)
 end
 
 # Function to calculate kernel value in both "particle i" format and "list of interactions" format
@@ -50,12 +50,11 @@ function ∑ⱼWᵢⱼ(list, points, αD, H) # preallocation not used
 
     sumWI = zeros(N)
     sumWL = zeros(length(list))
-    h     = H * 0.5
-    h⁻¹   = 1 / h
+    H⁻¹    = 1 / H
     for (iter, L) in enumerate(list)
         i = L[1]; j = L[2]; d = L[3]
 
-        q = d * h⁻¹
+        q = d * H⁻¹
 
         W = Wᵢⱼ(αD, q)
 
@@ -103,7 +102,6 @@ function Optim∇ᵢWᵢⱼ(αD, q, xᵢⱼ, h)
 end
 
 
-
 # Function to calculate kernel gradient value in both "particle i" format and "list of interactions" format
 # Please notice how when using CellListMap since it is based on a "list of interactions", for each 
 # interaction we must add the contribution to both the i'th and j'th particle!
@@ -114,19 +112,19 @@ end
 
 ```
 """
-function ∑ⱼ∇ᵢWᵢⱼ!(sumWgI, sumWgL, xᵢⱼ, list, points, αD, h) 
-    N    = length(points)
+function ∑ⱼ∇ᵢWᵢⱼ!(sumWgI, sumWgL, xᵢⱼ, list, αD, H) 
     fill!(sumWgI, SVector(0.0, 0.0, 0.0))
     fill!(sumWgL, SVector(0.0, 0.0, 0.0))
-    h⁻¹   = 1 / h
+    H = H/2
+    H⁻¹   = 1 / H
     for (iter, L) in enumerate(list)
         i = L[1]; j = L[2]; d = L[3]
 
         #xᵢⱼ = points[i] - points[j]
 
-        q = d * h⁻¹
+        q = d * H⁻¹
 
-        Wg = Optim∇ᵢWᵢⱼ(αD, q, xᵢⱼ[iter], h)
+        Wg = Optim∇ᵢWᵢⱼ(αD, q, xᵢⱼ[iter], H)
 
         sumWgI[i] +=  Wg
         sumWgI[j] -=  Wg

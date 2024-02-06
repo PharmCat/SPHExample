@@ -10,13 +10,11 @@ import ProgressMeter: @showprogress, next!, Progress, BarGlyphs
 
 path    = dirname(@__FILE__)
 
-
 function RunSimulation(; 
                         SaveLocation=joinpath(path, "res"),
                         SimulationName="DamBreak",
                         NumberOfIterations=200001, # 2 iteration for test 
-                        OutputIteration=500)
-
+                        OutputIteration=50)
     progr = Progress(NumberOfIterations,
         dt=1.0,
         barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
@@ -63,9 +61,12 @@ function RunSimulation(;
     BOUND_CSV = joinpath(path, "../input/BoundaryPoints_Dp0.02.csv")
     ρ₀  = 1000
     dx  = 0.02
-    H   = 1.2 * sqrt(2) * dx
+    h   = 1.2 * sqrt(2) * dx
+    H   = 2h
     m₀  = ρ₀ * dx * dx #mᵢ  = mⱼ = m₀
-    αD  = (7/(4 * π * H^2))
+    H⁻² = 1/H^2
+    C   = 7/π
+    αD  = C * H⁻²
     α   = 0.01
     g   = 9.81
     c₀  = sqrt(g * 2) * 20
@@ -99,11 +100,11 @@ function RunSimulation(;
     acceleration = zeros(eltype(points),length(points))
 
     # Save the initial particle layout with dummy values
-  
-    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0", 4, "0"), points, density.*0, acceleration.*0, density, pressure.(density,c₀,γ,ρ₀), acceleration, velocity)
+    # !!! Disable for test !!!
+    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,Pressure.(density,c₀,γ,ρ₀),acceleration,velocity)
 
     # Initialize the system list
-    system  = InPlaceNeighborList(x=points, cutoff=2 * H, parallel=true)
+    system  = InPlaceNeighborList(x=points, cutoff = H, parallel=true)
     
     N    = length(points)
 
@@ -132,7 +133,7 @@ function RunSimulation(;
     density_new     = zeros(N)
     velocity_new    = zeros(SVector{3, Float64}, N)
     points_new      = zeros(SVector{3, Float64}, N)
-    
+    local WiI
     for sim_iter = 1:NumberOfIterations
         # Be sure to update and retrieve the updated neighbour list at each time step
         update!(system, points)
@@ -148,16 +149,15 @@ function RunSimulation(;
         # based on the pair-to-pair interaction list, for use in later calculations.
         # Other functions follow a similar format, with the "I" and "L" ending
         
-        WgI, WgL = ∑ⱼ∇ᵢWᵢⱼ!(WgI, WgL, xᵢⱼ, list, points, αD, H) 
+        WgI, WgL = ∑ⱼ∇ᵢWᵢⱼ!(WgI, WgL, xᵢⱼ, list, αD, H) 
 
         # Then we calculate the density derivative at time step "n"
-        dρdtI, _ = ∂ρᵢ∂tDDT!(dρdtI, dρdtL, xᵢⱼ, list, points, H, m₀, δᵩ, c₀, γ, g, ρ₀, density, velocity, WgL, MotionLimiter; drhopvp = drhopvpbuffer, drhopvn = drhopvnbuffer)
+        dρdtI, _ = ∂ρᵢ∂tDDT!(dρdtI, dρdtL, xᵢⱼ, list, points, h, m₀, δᵩ, c₀, γ, g, ρ₀, density, velocity, WgL, MotionLimiter; drhopvp = drhopvpbuffer, drhopvn = drhopvnbuffer)
 
         # We calculate viscosity contribution and momentum equation at time step "n"
-        viscI, _ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, H, density, α, velocity, c₀, m₀, WgL)
+        viscI, _ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, h, density, α, velocity, c₀, m₀, WgL)
 
         dvdtI, _ = ∂vᵢ∂t!(dvdtI, dvdtL, list, points, m₀, density, WgL, c₀, γ, ρ₀)
-
         # We add gravity as a final step for the i particles, not the L ones, since we do not split the contribution, that is unphysical!
         # So please be careful with using "L" results directly in some cases
         dvdtI .= map((x,y) -> x + y * SVector(0, g, 0), dvdtI + viscI, GravityFactor)
@@ -175,10 +175,10 @@ function RunSimulation(;
         updatexᵢⱼ!(xᵢⱼ, list, points_n_half)
 
         # Density derivative at "n+½" - Note that we keep the kernel gradient values calculated at "n" for simplicity
-        dρdtI_n_half, _ = ∂ρᵢ∂tDDT!(dρdtI, dρdtL, xᵢⱼ, list, points_n_half, H, m₀, δᵩ, c₀, γ, g, ρ₀, density_n_half, velocity_n_half, WgL, MotionLimiter; drhopvp = drhopvpbuffer, drhopvn = drhopvnbuffer)
+        dρdtI_n_half, _ = ∂ρᵢ∂tDDT!(dρdtI, dρdtL, xᵢⱼ, list, points_n_half, h, m₀, δᵩ, c₀, γ, g, ρ₀, density_n_half, velocity_n_half, WgL, MotionLimiter; drhopvp = drhopvpbuffer, drhopvn = drhopvnbuffer)
         # Viscous contribution and momentum equation at "n+½"
 
-        viscI_n_half,_ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points_n_half, H, density_n_half, α, velocity_n_half, c₀, m₀, WgL)
+        viscI_n_half,_ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points_n_half, h, density_n_half, α, velocity_n_half, c₀, m₀, WgL)
 
         dvdtI_n_half,_ = ∂vᵢ∂t!(dvdtI, dvdtL, list, points_n_half, m₀, density_n_half, WgL, c₀, γ, ρ₀)
         dvdtI_n_half  .= map((x, y)->x + y * SVector(0, g, 0), dvdtI_n_half + viscI_n_half, GravityFactor) 
@@ -198,22 +198,21 @@ function RunSimulation(;
         points       .= points_new
         acceleration .= dvdtI_n_half
 
-        # Automatic time stepping control
-
         ct += dt # add dt to time
 
-        dt = Δt(acceleration, points, velocity, c₀, H, CFL)
+        # Automatic time stepping control
+        dt = Δt(acceleration, points, velocity, c₀, h, CFL)
 
-        #@printf "Iteration %i | dt = %.5e \n" sim_iter dt
-
-        #if sim_iter % OutputIteration == 0
+        # !!! Disable for test !!!
+        
         if ct >= nt
             nt += tf
             create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity)
         end
+        
         next!(progr; showvalues = [(:iter, sim_iter), (:dt, dt)])
     end
-    points, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity
+    WiI, points, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity
 end
 
 
