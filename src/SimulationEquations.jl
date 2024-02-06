@@ -28,11 +28,11 @@ end
 Function to calculate Kernel Value:
 
 ```math
-Wᵢⱼ = αD * (1 - \\frac{q}{2})^4 * (2 * q + 1)
+Wᵢⱼ = αD * (1 - q)^4 * (1 + 4q)
 ```
 """
 function Wᵢⱼ(αD, q)
-    return αD * (1 - q * 0.5) ^ 4 * (2 * q + 1)
+    return αD * (1 - q) ^ 4 * (4 * q + 1)
 end
 
 # Function to calculate kernel value in both "particle i" format and "list of interactions" format
@@ -45,11 +45,12 @@ end
 
 ```
 """
-function ∑ⱼWᵢⱼ(list, points, αD, h) # preallocation not used
+function ∑ⱼWᵢⱼ(list, points, αD, H) # preallocation not used
     N    = length(points)
 
     sumWI = zeros(N)
     sumWL = zeros(length(list))
+    h     = H * 0.5
     h⁻¹   = 1 / h
     for (iter, L) in enumerate(list)
         i = L[1]; j = L[2]; d = L[3]
