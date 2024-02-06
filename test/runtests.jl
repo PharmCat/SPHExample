@@ -9,7 +9,7 @@ import CellListMap: update!
 using LinearAlgebra
 import ProgressMeter: @showprogress, Progress, next!, BarGlyphs
 
-const path    = dirname(@__FILE__)
+path    = dirname(@__FILE__)
 
 
 @testset "  Basic test                                               " begin
@@ -206,11 +206,11 @@ function RunSimulation(;
         #end
         next!(progr; showvalues = [(:iter, sim_iter), (:dt, dt)])
     end
-    points, density, Pressure.(density, c₀, γ, ρ₀), acceleration, velocity
+    points, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity
 end
 
 # Test result
-points, density, pressure, acceleration, velocity = RunSimulation(NumberOfIterations=2)
+points, density, pres, acceleration, velocity = RunSimulation(NumberOfIterations=2)
 
     # Dev test, may not reflect real correctness
 
@@ -220,7 +220,7 @@ points, density, pressure, acceleration, velocity = RunSimulation(NumberOfIterat
 
     @test sum(density) ≈ 6.200838532554191e6
 
-    @test sum(pressure) ≈ 4.604937728177776e7
+    @test sum(pres) ≈ 4.604937728177776e7
 
     @test sum(acceleration) ≈ [ 1.4551915228366852e-11
     -31519.530000000093

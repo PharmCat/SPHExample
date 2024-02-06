@@ -1,6 +1,6 @@
 module SimulationEquations
 
-export Wᵢⱼ, ∑ⱼWᵢⱼ, Optim∇ᵢWᵢⱼ, ∑ⱼ∇ᵢWᵢⱼ!, Pressure, ∂Πᵢⱼ∂t!, ∂ρᵢ∂tDDT!, ∂vᵢ∂t!, updatexᵢⱼ!, resizebuffers!
+export Wᵢⱼ, ∑ⱼWᵢⱼ, Optim∇ᵢWᵢⱼ, ∑ⱼ∇ᵢWᵢⱼ!, pressure, ∂Πᵢⱼ∂t!, ∂ρᵢ∂tDDT!, ∂vᵢ∂t!, updatexᵢⱼ!, resizebuffers!
 
 using CellListMap
 using StaticArrays
@@ -32,7 +32,7 @@ Wᵢⱼ = αD * (1 - \\frac{q}{2})^4 * (2 * q + 1)
 ```
 """
 function Wᵢⱼ(αD, q)
-    return αD * (1 - q / 2) ^ 4 * (2 * q + 1)
+    return αD * (1 - q * 0.5) ^ 4 * (2 * q + 1)
 end
 
 # Function to calculate kernel value in both "particle i" format and "list of interactions" format
@@ -50,10 +50,11 @@ function ∑ⱼWᵢⱼ(list, points, αD, h) # preallocation not used
 
     sumWI = zeros(N)
     sumWL = zeros(length(list))
+    h⁻¹   = 1 / h
     for (iter, L) in enumerate(list)
         i = L[1]; j = L[2]; d = L[3]
 
-        q = d / h
+        q = d * h⁻¹
 
         W = Wᵢⱼ(αD, q)
 
@@ -116,12 +117,13 @@ function ∑ⱼ∇ᵢWᵢⱼ!(sumWgI, sumWgL, xᵢⱼ, list, points, αD, h)
     N    = length(points)
     fill!(sumWgI, SVector(0.0, 0.0, 0.0))
     fill!(sumWgL, SVector(0.0, 0.0, 0.0))
+    h⁻¹   = 1 / h
     for (iter, L) in enumerate(list)
         i = L[1]; j = L[2]; d = L[3]
 
         #xᵢⱼ = points[i] - points[j]
 
-        q = d / h
+        q = d * h⁻¹
 
         Wg = Optim∇ᵢWᵢⱼ(αD, q, xᵢⱼ[iter], h)
 
@@ -144,7 +146,7 @@ Equation of State in Weakly-Compressible SPH
 
 ```
 """
-function Pressure(ρ, c₀, γ, ρ₀)
+function pressure(ρ, c₀, γ, ρ₀)
     return ((c₀ ^ 2 * ρ₀) / γ) * ((ρ / ρ₀) ^ γ - 1)
 end
 
@@ -157,6 +159,9 @@ The artificial viscosity term:
 ```math
 
 ```
+
+Gingold&Monaghan (1983), Monaghan (1992)
+
 """
 function ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, h, ρ, α, v, c₀, m₀, WgL)
     N    = length(points)
@@ -184,7 +189,7 @@ function ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, h, ρ, α, v, c�
         
         Πᵢⱼm₀WgLi = Πᵢⱼ * m₀ * WgL[iter]
         
-        viscI[i]   += -Πᵢⱼm₀WgLi
+        viscI[i]   -= Πᵢⱼm₀WgLi
         viscI[j]   +=  Πᵢⱼm₀WgLi
 
         viscL[iter] = -Πᵢⱼm₀WgLi
@@ -216,10 +221,10 @@ function ∂ρᵢ∂t(list, points, m, ρ, v, WgL)
         vᵢⱼ   = v[i] - v[j]
         ∇ᵢWᵢⱼ = WgL[iter]
 
-        dρdtI[i] += ρᵢ * dot((m / ρⱼ) * vᵢⱼ, ∇ᵢWᵢⱼ)
-        dρdtI[j] += ρⱼ * dot((m /ρᵢ ) * -vᵢⱼ, -∇ᵢWᵢⱼ)
+        dρdtI[i] += ρᵢ * (m / ρⱼ) * dot(vᵢⱼ, ∇ᵢWᵢⱼ)
+        dρdtI[j] += ρⱼ * (m / ρᵢ) * dot(vᵢⱼ, ∇ᵢWᵢⱼ)
 
-        dρdtL[iter] = ρᵢ * dot((m / ρⱼ) * vᵢⱼ, ∇ᵢWᵢⱼ)
+        dρdtL[iter] = ρᵢ * (m / ρⱼ)  * dot(vᵢⱼ, ∇ᵢWᵢⱼ)
     end
 
     return dρdtI, dρdtL
@@ -324,8 +329,8 @@ function ∂vᵢ∂t!(dvdtI, dvdtL, list, points, m, ρ, WgL, c₀, γ, ρ₀)
 
         ρᵢ    = ρ[i]
         ρⱼ    = ρ[j]
-        Pᵢ    = Pressure(ρᵢ, c₀, γ, ρ₀)
-        Pⱼ    = Pressure(ρⱼ, c₀, γ, ρ₀)
+        Pᵢ    = pressure(ρᵢ, c₀, γ, ρ₀)
+        Pⱼ    = pressure(ρⱼ, c₀, γ, ρ₀)
         ∇ᵢWᵢⱼ = WgL[iter]
 
         Pfac  = (Pᵢ+Pⱼ)/(ρᵢ*ρⱼ)

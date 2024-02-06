@@ -15,7 +15,7 @@ function RunSimulation(;
                         SaveLocation=joinpath(path, "res"),
                         SimulationName="DamBreak",
                         NumberOfIterations=200001, # 2 iteration for test 
-                        OutputIteration=50)
+                        OutputIteration=500)
 
     progr = Progress(NumberOfIterations,
         dt=1.0,
@@ -73,6 +73,10 @@ function RunSimulation(;
     dt  = 1e-5
     δᵩ  = 0.1
     CFL = 0.2
+    # time management 
+    ct  = 0.0      # current  time
+    tf  = 1/30     # timeframe
+    nt  = ct + tf  # next time
 
     # Load in the fluid and boundary particles. Return these points and both data frames
     points, DF_FLUID, DF_BOUND    = LoadParticlesFromCSV(FLUID_CSV,BOUND_CSV)
@@ -96,7 +100,7 @@ function RunSimulation(;
 
     # Save the initial particle layout with dummy values
   
-    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,Pressure.(density,c₀,γ,ρ₀),acceleration,velocity)
+    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0", 4, "0"), points, density.*0, acceleration.*0, density, pressure.(density,c₀,γ,ρ₀), acceleration, velocity)
 
     # Initialize the system list
     system  = InPlaceNeighborList(x=points, cutoff=2 * H, parallel=true)
@@ -153,6 +157,7 @@ function RunSimulation(;
         viscI, _ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, H, density, α, velocity, c₀, m₀, WgL)
 
         dvdtI, _ = ∂vᵢ∂t!(dvdtI, dvdtL, list, points, m₀, density, WgL, c₀, γ, ρ₀)
+
         # We add gravity as a final step for the i particles, not the L ones, since we do not split the contribution, that is unphysical!
         # So please be careful with using "L" results directly in some cases
         dvdtI .= map((x,y) -> x + y * SVector(0, g, 0), dvdtI + viscI, GravityFactor)
@@ -194,16 +199,21 @@ function RunSimulation(;
         acceleration .= dvdtI_n_half
 
         # Automatic time stepping control
+
+        ct += dt # add dt to time
+
         dt = Δt(acceleration, points, velocity, c₀, H, CFL)
 
         #@printf "Iteration %i | dt = %.5e \n" sim_iter dt
 
-        if sim_iter % OutputIteration == 0
-            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, Pressure.(density, c₀, γ, ρ₀), acceleration, velocity)
+        #if sim_iter % OutputIteration == 0
+        if ct >= nt
+            nt += tf
+            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity)
         end
         next!(progr; showvalues = [(:iter, sim_iter), (:dt, dt)])
     end
-    points, density, Pressure.(density, c₀, γ, ρ₀), acceleration, velocity
+    points, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity
 end
 
 
