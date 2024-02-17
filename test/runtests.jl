@@ -106,10 +106,10 @@ function RunSimulation(;
 
     # Save the initial particle layout with dummy values
     # !!! Disable for test !!!
-    # create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,Pressure.(density,c₀,γ,ρ₀),acceleration,velocity)
+    # create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,pressure.(density,c₀,γ,ρ₀),acceleration,velocity,ct)
 
     # Initialize the system list
-    system  = InPlaceNeighborList(x=points, cutoff = H, parallel=true)
+    system  = InPlaceNeighborList(x=points, cutoff = H - 0.0000001, parallel=true)
     
     N    = length(points)
 
@@ -163,6 +163,7 @@ function RunSimulation(;
         viscI, _ = ∂Πᵢⱼ∂t!(viscI, viscL, xᵢⱼ, list, points, h, density, α, velocity, c₀, m₀, WgL)
 
         dvdtI, _ = ∂vᵢ∂t!(dvdtI, dvdtL, list, points, m₀, density, WgL, c₀, γ, ρ₀)
+        
         # We add gravity as a final step for the i particles, not the L ones, since we do not split the contribution, that is unphysical!
         # So please be careful with using "L" results directly in some cases
         dvdtI .= map((x,y) -> x + y * SVector(0, g, 0), dvdtI + viscI, GravityFactor)
@@ -206,14 +207,14 @@ function RunSimulation(;
         ct += dt # add dt to time
 
         # Automatic time stepping control
-        dt = Δt(acceleration, points, velocity, c₀, h, CFL)
+        dt = SPHExample.Δt(acceleration, points, velocity, c₀, h, CFL)
 
         #@printf "Iteration %i | dt = %.5e \n" sim_iter dt
         # Disable for test
         #=
         if ct >= nt
             nt += tf
-            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity)
+            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity, ct)
         end
         =#
         next!(progr; showvalues = [(:iter, sim_iter), (:dt, dt)])
@@ -244,6 +245,72 @@ WiI, points, density, pres, acceleration, velocity = RunSimulation(NumberOfItera
 
 end
 
+path    = dirname(@__FILE__)
+DF_FLUID = CSV.read(joinpath(path, "./FluidPoints_Dp0.02.csv"), DataFrame)
+DF_BOUND = CSV.read(joinpath(path, "./BoundaryPoints_Dp0.02.csv"), DataFrame)
+P1F = DF_FLUID[!,"Points:0"]
+P2F = DF_FLUID[!,"Points:1"]
+P3F = DF_FLUID[!,"Points:2"]
+P1B = DF_BOUND[!,"Points:0"]
+P2B = DF_BOUND[!,"Points:1"]
+P3B = DF_BOUND[!,"Points:2"]
+points = Vector{SVector{3,Float64}}()
+for i = 1:length(P1F)
+    push!(points,SVector(P1F[i],P3F[i],P2F[i]))
+end
+for i = 1:length(P1B)
+    push!(points,SVector(P1B[i],P3B[i],P2B[i]))
+end
+
+
+
+points2 = map(x-> SVector((x[1], x[2])), points)
+
+H = 0.06788225099390856
+system  = InPlaceNeighborList(x=points, cutoff = H, parallel=true)
+update!(system, points)
+list = neighborlist!(system)
+
+
+
+system  = InPlaceNeighborList(x=points, cutoff = H, parallel=false)
+update!(system, points)
+list = neighborlist!(system)
+
+ @inline function distance_condition(p1, p2, r) 
+    sum(@. (p1 - p2)^2) ≤ r^2
+ end
+
+function brute_force(p, r)
+    ps = Vector{Tuple{Int, Int}}()
+    n = length(p)
+    for i in 1:(n-1)
+        for j in (i+1):n
+            if @inbounds distance_condition(p[i], p[j], r)
+                push!(ps, (i, j))
+            end
+        end
+    end
+    return ps
+end
+
+val = 0.00001
+for i = 1:100
+    
+    bf = brute_force(points, H + val)
+    val += 0.00001
+    if length(bf) > 101128 println(val, " ", length(bf) ) end
+end
+
+bf = brute_force(points, H + 0.00422)
+bf = brute_force(points, H + 0.00423)
+
+system  = InPlaceNeighborList(x=points, cutoff = H - 0.0000001, parallel=false)
+update!(system, points)
+list = neighborlist!(system)
+        
+  
+        
 #=
 using Profile
 using PProf

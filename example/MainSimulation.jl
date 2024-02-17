@@ -64,7 +64,8 @@ function RunSimulation(;
     h   = 1.2 * sqrt(2) * dx
     H   = 2h
     m₀  = ρ₀ * dx * dx #mᵢ  = mⱼ = m₀
-    H⁻² = 1/H^2
+    H⁻¹ = 1/H
+    H⁻² = H⁻¹^2
     C   = 7/π
     αD  = C * H⁻²
     α   = 0.01
@@ -101,7 +102,7 @@ function RunSimulation(;
 
     # Save the initial particle layout with dummy values
     # !!! Disable for test !!!
-    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,Pressure.(density,c₀,γ,ρ₀),acceleration,velocity)
+    create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad("0",4,"0"),points,density.*0,acceleration.*0,density,pressure.(density,c₀,γ,ρ₀),acceleration,velocity,ct)
 
     # Initialize the system list
     system  = InPlaceNeighborList(x=points, cutoff = H, parallel=true)
@@ -201,13 +202,13 @@ function RunSimulation(;
         ct += dt # add dt to time
 
         # Automatic time stepping control
-        dt = Δt(acceleration, points, velocity, c₀, h, CFL)
+        dt = Δt(acecleration, points, velocity, c₀, h, CFL)
 
         # !!! Disable for test !!!
         
         if ct >= nt
             nt += tf
-            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity)
+            create_vtp_file(SaveLocation*"/"*SimulationName*"_"*lpad(sim_iter, 4, "0"), points, WiI, WgI, density, pressure.(density, c₀, γ, ρ₀), acceleration, velocity, ct)
         end
         
         next!(progr; showvalues = [(:iter, sim_iter), (:dt, dt)])

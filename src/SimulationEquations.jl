@@ -148,6 +148,9 @@ Equation of State in Weakly-Compressible SPH
 function pressure(ρ, c₀, γ, ρ₀)
     return ((c₀ ^ 2 * ρ₀) / γ) * ((ρ / ρ₀) ^ γ - 1)
 end
+function pressure(ρ, c₀, γ, γ⁻¹, ρ₀, ρ₀⁻¹)
+    return (c₀ * c₀ * ρ₀ * γ⁻¹) * ((ρ * ρ₀⁻¹) ^ γ - 1)
+end
 
 # The artificial viscosity term
 """
